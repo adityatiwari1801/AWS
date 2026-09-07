@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, ci/cd-CF]
+    paths:
+      - "infra/**"
+      - "lambda_function.py"
+      - "glue_job.py"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      import_mode:
+        description: "One-time only: import existing console-created resources into the stack instead of a normal update"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Package Lambda
+        run: zip lambda_function.zip lambda_function.py
+
+      - name: Upload assets (Lambda zip + Glue script)
+        run: |
+          aws s3 cp lambda_function.zip "s3://${{ vars.ASSETS_BUCKET }}/lambda_function.zip"
+          aws s3 cp glue_job.py "s3://${{ vars.ASSETS_BUCKET }}/glue_job.py"
+
+      - name: Import existing resources (one-time)
+        if: ${{ inputs.import_mode == true }}
+        run: |
+          aws cloudformation create-change-set \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --change-set-name import-existing-resources \
+            --change-set-type IMPORT \
+            --resources-to-import file://infra/import-resources.json \
+            --template-body file://infra/template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameters ParameterKey=AssetsBucketName,ParameterValue=${{ vars.ASSETS_BUCKET }}
+
+          aws cloudformation wait change-set-create-complete \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --change-set-name import-existing-resources
+
+          aws cloudformation execute-change-set \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --change-set-name import-existing-resources
+
+          aws cloudformation wait stack-import-complete \
+            --stack-name "${{ vars.CFN_STACK_NAME }}"
+
+      - name: Deploy stack
+        if: ${{ inputs.import_mode != true }}
+        run: |
+          aws cloudformation deploy \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --template-file infra/template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides AssetsBucketName=${{ vars.ASSETS_BUCKET }} \
+            --no-fail-on-empty-changeset
+
+      - name: Show stack outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --query "Stacks[0].Outputs" \
+            --output table >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time bootstrap: GitHub OIDC provider, the deploy role assumed by GitHub Actions,
+  and the assets bucket used to stage the Lambda zip and glue_job.py before each deploy.
+  Deploy this once by hand (console or `aws cloudformation deploy`) BEFORE the first
+  Deploy workflow run. It is intentionally separate from infra/template.yaml so the
+  pipeline stack's own deploy/destroy cycle never touches the credentials that manage it.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub org/user that owns the repo, e.g. octocat
+  GitHubRepo:
+    Type: String
+    Description: Repo name only, e.g. AWS_CICD
+  AssetsBucketName:
+    Type: String
+
+Conditions:
+  # Set to "false" via a stack update if an OIDC provider for GitHub already exists in this account
+  CreateOidcProvider: !Equals [true, true]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref AssetsBucketName
+
+  GitHubActionsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubActions-BootcampPipeline-Deploy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+      Policies:
+        - PolicyName: DeployBootcampPipeline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - arn:aws:s3:::bootcamp-input
+                  - arn:aws:s3:::bootcamp-input/*
+                  - arn:aws:s3:::bootcamp-output
+                  - arn:aws:s3:::bootcamp-output/*
+                  - !Sub arn:aws:s3:::${AssetsBucketName}
+                  - !Sub arn:aws:s3:::${AssetsBucketName}/*
+              - Effect: Allow
+                Action:
+                  - lambda:*
+                Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:bootcamp-function
+              - Effect: Allow
+                Action:
+                  - glue:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PassRole
+                  - iam:TagRole
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource:
+                  - arn:aws:iam::*:role/Bootcamp-Lambda
+                  - arn:aws:iam::*:role/Bootcamp-Glue
+                  - arn:aws:iam::*:role/Bootcamp-Glue-Role
+                  - arn:aws:iam::*:role/Bootcamp-Crawler
+                  - arn:aws:iam::*:role/Bootcamp-Crawler-Input
+
+Outputs:
+  DeployRoleArn:
+    Value: !GetAtt GitHubActionsDeployRole.Arn
+  AssetsBucketNameOut:
+    Value: !Ref AssetsBucket

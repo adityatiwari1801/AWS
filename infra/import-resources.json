@@ -1,0 +1,82 @@
+[
+  {
+    "ResourceType": "AWS::S3::Bucket",
+    "LogicalResourceId": "InputBucket",
+    "ResourceIdentifier": { "BucketName": "bootcamp-input" }
+  },
+  {
+    "ResourceType": "AWS::S3::Bucket",
+    "LogicalResourceId": "OutputBucket",
+    "ResourceIdentifier": { "BucketName": "bootcamp-output" }
+  },
+  {
+    "ResourceType": "AWS::IAM::Role",
+    "LogicalResourceId": "BootcampLambdaRole",
+    "ResourceIdentifier": { "RoleName": "Bootcamp-Lambda" }
+  },
+  {
+    "ResourceType": "AWS::IAM::Role",
+    "LogicalResourceId": "BootcampGlueRole",
+    "ResourceIdentifier": { "RoleName": "Bootcamp-Glue" }
+  },
+  {
+    "ResourceType": "AWS::IAM::Role",
+    "LogicalResourceId": "BootcampCrawlerInputRole",
+    "ResourceIdentifier": { "RoleName": "Bootcamp-Crawler-Input" }
+  },
+  {
+    "ResourceType": "AWS::IAM::Role",
+    "LogicalResourceId": "BootcampCrawlerRole",
+    "ResourceIdentifier": { "RoleName": "Bootcamp-Crawler" }
+  },
+  {
+    "ResourceType": "AWS::IAM::Role",
+    "LogicalResourceId": "BootcampGlueRoleSpare",
+    "ResourceIdentifier": { "RoleName": "Bootcamp-Glue-Role" }
+  },
+  {
+    "ResourceType": "AWS::Lambda::Function",
+    "LogicalResourceId": "BootcampFunction",
+    "ResourceIdentifier": { "FunctionName": "bootcamp-function" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Database",
+    "LogicalResourceId": "GlueDatabase",
+    "ResourceIdentifier": { "DatabaseName": "glue_db" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Crawler",
+    "LogicalResourceId": "GlueInputCrawler",
+    "ResourceIdentifier": { "Name": "Glue_Input" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Crawler",
+    "LogicalResourceId": "GlueOutputCrawler",
+    "ResourceIdentifier": { "Name": "Glue_output" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Job",
+    "LogicalResourceId": "GlueETLJob",
+    "ResourceIdentifier": { "Name": "glue_job" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Workflow",
+    "LogicalResourceId": "GlueWorkflow",
+    "ResourceIdentifier": { "Name": "glue-pipeline" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Trigger",
+    "LogicalResourceId": "TriggerGlueStart",
+    "ResourceIdentifier": { "Name": "glue-start" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Trigger",
+    "LogicalResourceId": "TriggerInter1",
+    "ResourceIdentifier": { "Name": "inter1" }
+  },
+  {
+    "ResourceType": "AWS::Glue::Trigger",
+    "LogicalResourceId": "TriggerInter2",
+    "ResourceIdentifier": { "Name": "Inter2" }
+  }
+]
