@@ -38,7 +38,7 @@ AWS/
 
 ## 🏗️ Architecture Diagram
 
-![Architecture Diagram](/AWS/architecture-with-cicd.png)
+![Architecture Diagram](architecture_diagram_lowlevel.png)
 
 **Flow:** `S3 (input/)` → `s3:ObjectCreated:Put` event → `Lambda (bootcamp-function)` → `Glue Workflow (glue-pipeline)` → `Crawler (Glue_Input)` → `Glue Job (glue_job.py)` → `Crawler (Glue_output)` → `S3 (output/)`, with every stage emitting logs to **CloudWatch** and schema metadata to the **Glue Data Catalog**.
 
