@@ -26,6 +26,7 @@ Resources:
 
   BootcampLambdaRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       RoleName: Bootcamp-Lambda
       AssumeRolePolicyDocument:
@@ -50,6 +51,7 @@ Resources:
 
   BootcampGlueRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       RoleName: Bootcamp-Glue
       AssumeRolePolicyDocument:
@@ -80,6 +82,7 @@ Resources:
 
   BootcampCrawlerInputRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       RoleName: Bootcamp-Crawler-Input
       AssumeRolePolicyDocument:
@@ -106,6 +109,7 @@ Resources:
 
   BootcampCrawlerRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       RoleName: Bootcamp-Crawler
       AssumeRolePolicyDocument:
@@ -132,6 +136,7 @@ Resources:
 
   BootcampGlueRoleSpare:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       RoleName: Bootcamp-Glue-Role
       AssumeRolePolicyDocument:
@@ -146,11 +151,13 @@ Resources:
 
   OutputBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
       BucketName: !Ref OutputBucketName
 
   InputBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
       BucketName: !Ref InputBucketName
       NotificationConfiguration:
@@ -167,6 +174,7 @@ Resources:
 
   BootcampFunction:
     Type: AWS::Lambda::Function
+    DeletionPolicy: Retain
     Properties:
       FunctionName: bootcamp-function
       Runtime: python3.12
