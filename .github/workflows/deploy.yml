@@ -63,6 +63,20 @@ jobs:
           aws cloudformation wait stack-import-complete \
             --stack-name "${{ vars.CFN_STACK_NAME }}"
 
+      - name: Create base resources (first-time, no pre-existing resources)
+        if: ${{ inputs.import_mode != true }}
+        run: |
+          aws cloudformation deploy \
+            --stack-name "${{ vars.CFN_STACK_NAME }}" \
+            --template-file infra/import-template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides AssetsBucketName=${{ vars.ASSETS_BUCKET }} \
+            --no-fail-on-empty-changeset
+
+      - name: Seed input/ prefix marker
+        run: |
+          aws s3api put-object --bucket bootcamp-input --key input/
+
       - name: Deploy stack
         run: |
           aws cloudformation deploy \

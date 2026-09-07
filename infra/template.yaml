@@ -222,6 +222,7 @@ Resources:
 
   GlueInputCrawler:
     Type: AWS::Glue::Crawler
+    DependsOn: InputBucket
     Properties:
       Name: Glue_Input
       Role: !GetAtt BootcampCrawlerInputRole.Arn
