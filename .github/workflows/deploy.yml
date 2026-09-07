@@ -93,6 +93,9 @@ jobs:
             --query "Stacks[0].Outputs" \
             --output table >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Wait for S3 event notification config to propagate
+        run: sleep 45
+
       - name: Trigger pipeline (upload sample CSV)
         run: |
           aws s3 cp ipl_players_extra.csv "s3://bootcamp-input/input/ipl_players_extra.csv"
