@@ -8,7 +8,6 @@ on:
         required: true
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -22,16 +21,17 @@ jobs:
             exit 1
           fi
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (IAM user)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Empty S3 buckets (CloudFormation cannot delete non-empty buckets)
         run: |
-          aws s3 rm "s3://bootcamp-input" --recursive || true
-          aws s3 rm "s3://bootcamp-output" --recursive || true
+          aws s3 rm "s3://${{ vars.INPUT_BUCKET }}" --recursive || true
+          aws s3 rm "s3://${{ vars.OUTPUT_BUCKET }}" --recursive || true
 
       - name: Delete stack
         run: |
