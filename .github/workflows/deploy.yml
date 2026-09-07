@@ -78,3 +78,7 @@ jobs:
             --stack-name "${{ vars.CFN_STACK_NAME }}" \
             --query "Stacks[0].Outputs" \
             --output table >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trigger pipeline (upload sample CSV)
+        run: |
+          aws s3 cp ipl_players_extra.csv "s3://bootcamp-input/input/ipl_players_extra.csv"
