@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Phase 1 of the one-time import: contains only the resources that support
+  CloudFormation import (S3 buckets, IAM roles, Lambda function). Used once
+  with --change-set-type IMPORT to create the stack; the Glue objects and the
+  Lambda permission are then added by a normal deploy of infra/template.yaml.
+
+Parameters:
+  InputBucketName:
+    Type: String
+    Default: bootcamp-input
+  OutputBucketName:
+    Type: String
+    Default: bootcamp-output
+  AssetsBucketName:
+    Type: String
+    Description: Pre-existing bucket holding the packaged Lambda zip and glue_job.py script.
+  LambdaCodeKey:
+    Type: String
+    Default: lambda_function.zip
+  GlueWorkflowName:
+    Type: String
+    Default: glue-pipeline
+
+Resources:
+
+  BootcampLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Bootcamp-Lambda
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: Start-Glue-Job
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:StartWorkflowRun
+                  - glue:GetWorkflowRun
+                Resource: "*"
+
+  BootcampGlueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Bootcamp-Glue
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: Glue-access-S3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${InputBucketName}
+                  - !Sub arn:aws:s3:::${InputBucketName}/*
+                  - !Sub arn:aws:s3:::${OutputBucketName}
+                  - !Sub arn:aws:s3:::${OutputBucketName}/*
+                  - !Sub arn:aws:s3:::${AssetsBucketName}/*
+
+  BootcampCrawlerInputRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Bootcamp-Crawler-Input
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: Crawler-access-Input-S3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${InputBucketName}
+                  - !Sub arn:aws:s3:::${InputBucketName}/*
+
+  BootcampCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Bootcamp-Crawler
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: Crawler-access-Output-S3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${OutputBucketName}
+                  - !Sub arn:aws:s3:::${OutputBucketName}/*
+
+  BootcampGlueRoleSpare:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Bootcamp-Glue-Role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OutputBucketName
+
+  InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref InputBucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:Put
+            Function: !GetAtt BootcampFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: input/
+                  - Name: suffix
+                    Value: .csv
+
+  BootcampFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: bootcamp-function
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt BootcampLambdaRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          GLUE_WORKFLOW_NAME: !Ref GlueWorkflowName
+      Code:
+        S3Bucket: !Ref AssetsBucketName
+        S3Key: !Ref LambdaCodeKey

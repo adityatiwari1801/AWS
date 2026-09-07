@@ -48,7 +48,7 @@ jobs:
             --change-set-name import-existing-resources \
             --change-set-type IMPORT \
             --resources-to-import file://infra/import-resources.json \
-            --template-body file://infra/template.yaml \
+            --template-body file://infra/import-template.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
             --parameters ParameterKey=AssetsBucketName,ParameterValue=${{ vars.ASSETS_BUCKET }}
 
@@ -64,7 +64,6 @@ jobs:
             --stack-name "${{ vars.CFN_STACK_NAME }}"
 
       - name: Deploy stack
-        if: ${{ inputs.import_mode != true }}
         run: |
           aws cloudformation deploy \
             --stack-name "${{ vars.CFN_STACK_NAME }}" \
