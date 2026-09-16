@@ -173,6 +173,78 @@ This step has no manual-console equivalent — it exists solely to enable the CI
 
 ---
 
+### 3.1 OIDC Implementation & Security Hardening
+
+This section details the OpenID Connect (OIDC) federation setup and the security improvements applied to minimize permissions (least-privilege principle).
+
+#### What Was Implemented:
+
+1. **GitHub OIDC Provider & Federated Role (infra/bootstrap.yaml)**
+   - Created an AWS IAM OIDC provider at `https://token.actions.githubusercontent.com` that trusts GitHub's token issuer
+   - Created `GitHubActions-BootcampPipeline-Deploy` role with an assume-role policy that allows GitHub Actions to assume it **without storing AWS access keys in the repository**
+   - GitHub Actions obtains short-lived credentials (valid ~1 hour) by exchanging its workflow run JWT token for temporary AWS credentials via `sts:AssumeRoleWithWebIdentity`
+   - This eliminates the security risk of long-lived IAM user keys sitting in repo secrets
+
+   ![OIDC AWS](Screenshots/OIDC%20AWS.png)
+
+2. **ID-Qualified Token Format Handling**
+   - GitHub sends two different OIDC token formats in the `sub` claim:
+     - **Plain format** (normal): `repo:adityatiwari1801/AWS:ref:refs/heads/main`
+     - **ID-qualified format** (if org/repo was ever renamed): `repo:adityatiwari1801@313818176/AWS@1358041430:ref:refs/heads/main`
+   - The numbers (`313818176` = org ID, `1358041430` = repo ID) prevent replay attacks if your repo/org is renamed in the future
+   - The trust policy was updated to accept both formats, ensuring the workflow works regardless of past/future renames
+
+   ![OIDC CLI](Screenshots/OIDC%20CLI.png)
+
+3. **Least-Privilege Lambda Role (infra/template.yaml & infra/import-template.yaml)**
+   - **Before**: Lambda had `glue:StartWorkflowRun` and `glue:GetWorkflowRun` with `Resource: "*"` (could access any Glue workflow in the account)
+   - **After**: Scoped to the specific workflow ARN: `arn:aws:glue:${AWS::Region}:${AWS::AccountId}:workflow/${GlueWorkflowName}` (only `glue-pipeline`)
+   - Result: Lambda can only trigger/monitor the one Glue workflow it needs, nothing else
+
+   ![Lambda](Screenshots/Lambda_role_perms.png)
+
+4. **Least-Privilege Deploy Role (infra/bootstrap.yaml)**
+   - **CloudFormation permissions**: Changed from `cloudformation:*` on `Resource: "*"` to:
+     - Specific actions: `CreateStack`, `UpdateStack`, `DeleteStack`, `DescribeStacks`, `DescribeStackEvents`, `CreateChangeSet`, `ExecuteChangeSet`, etc.
+     - Specific resources: Only the `bootcamp-pipeline` stack and its changesets
+     - Exception: `GetTemplateSummary` and `ValidateTemplate` still require `Resource: "*"` (AWS limitation, required for `aws cloudformation deploy` internally)
+
+     ![Cloud](Screenshots/CloudForm_role_perms.png)
+   
+   - **Glue permissions**: Changed from `glue:*` on `Resource: "*"` to specific resource ARNs:
+     - Only the database (`glue_db`), crawlers (`Glue_Input`, `Glue_output`), job (`glue_job`), workflow (`glue-pipeline`), and triggers (`glue-start`, `inter1`, `Inter2`)
+     - Removed blanket access to all Glue resources
+   
+   - **Logs permissions**: Removed entirely — Lambda and Glue create their own CloudWatch log groups under their own execution roles, not the deploy role's
+
+5. **Self-Verifying Post-Deploy Trigger (.github/workflows/deploy.yml)**
+   - **Before**: Fixed 45-second sleep before uploading the sample CSV, hoping S3's notification config had propagated (race condition)
+   - **After**: Upload the CSV, then **poll the Glue workflow** to verify it actually started:
+     - If no workflow run detected after 20 seconds, retry the upload (repeat up to 5 times)
+     - Only report success when `get-workflow` confirms a real workflow run exists
+     - This guarantees the entire pipeline works end-to-end, not just that the deploy succeeded
+   - Result: No more silent failures from S3 event notification propagation delays
+
+   ![OIDC AWS](Screenshots/OIDC%20Actions.png)
+
+6. **Parameter-Driven Scoping (infra/bootstrap.yaml)**
+   - Added `CfnStackName` parameter (default: `bootcamp-pipeline`) to the bootstrap template
+   - Deploy role's CloudFormation permissions now reference this parameter, so you can manage multiple pipeline stacks with the same deploy role by simply passing a different stack name
+   - Follows infrastructure-as-code best practice: no hardcoded resource names in policies
+
+#### Security Outcome:
+
+| Component | Before | After | Impact |
+|-----------|--------|-------|--------|
+| **CI/CD Auth** | IAM user access keys in secrets | OIDC-federated short-lived tokens | No long-lived keys, automatic rotation |
+| **Lambda → Glue** | `glue:*` on `*` | Specific workflow ARN | Lambda can't access other Glue resources |
+| **Deploy Role → CloudFormation** | `cloudformation:*` on `*` | Named actions on specific stack ARNs | Can't modify other stacks or critical CFN operations |
+| **Deploy Role → Glue** | `glue:*` on `*` | Specific crawlers/jobs/workflow ARNs | Can't modify other projects' Glue resources |
+| **Deploy Role → Logs** | `logs:*` on `*` | Removed (services manage their own) | Deploy role not exposed to log deletion/modification |
+| **Post-Deploy Verification** | Blind 45s sleep | Active polling with retries | Catches propagation failures automatically |
+
+---
+
 ### 4. AWS Lambda Trigger Automation
 
 **Manual (Console):** Function created via Lambda console, code pasted into the inline editor, S3 trigger attached manually.

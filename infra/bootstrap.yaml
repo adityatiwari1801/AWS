@@ -21,8 +21,6 @@ Parameters:
     Description: Name of the pipeline stack this role is allowed to manage (infra/template.yaml).
 
 Conditions:
-  # No OIDC provider for token.actions.githubusercontent.com exists in this account
-  # (confirmed via `aws iam list-open-id-connect-providers`), so create one.
   CreateOidcProvider: !Equals [true, true]
 
 Resources:
@@ -91,9 +89,6 @@ Resources:
                   - !Sub arn:aws:cloudformation:*:${AWS::AccountId}:stack/${CfnStackName}/*
                   - !Sub arn:aws:cloudformation:*:${AWS::AccountId}:changeSet/*/*
               - Effect: Allow
-                # GetTemplateSummary/ValidateTemplate don't support resource-level permissions
-                # (AWS requires Resource: "*" for these two specifically) -- `aws cloudformation
-                # deploy` calls GetTemplateSummary internally to resolve template parameters.
                 Action:
                   - cloudformation:GetTemplateSummary
                   - cloudformation:ValidateTemplate
@@ -115,8 +110,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - glue:*
-                # Matches the specific Glue objects declared in infra/template.yaml. Table names
-                # are wildcarded since the crawlers create/update them dynamically at runtime.
                 Resource:
                   - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
                   - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/glue_db
