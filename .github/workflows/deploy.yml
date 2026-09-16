@@ -33,6 +33,16 @@ jobs:
           role-session-name: gha-deploy-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Record pre-deploy stack state
+        id: pre_deploy_state
+        run: |
+          # A stack that doesn't exist yet means this run creates everything (bucket, Lambda
+          # permission, S3 event notification) from scratch, which needs more propagation time
+          # before S3 will actually start firing events than a stack that's just being updated.
+          STATUS=$(aws cloudformation describe-stacks --stack-name "${{ vars.CFN_STACK_NAME }}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "MISSING")
+          echo "Pre-deploy stack status: $STATUS"
+          echo "fresh_create=$([ "$STATUS" = "MISSING" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Package Lambda
         run: zip lambda_function.zip lambda_function.py
 
@@ -94,14 +104,45 @@ jobs:
             --query "Stacks[0].Outputs" \
             --output table >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Wait for S3 event notification to go live
+        run: |
+          # On a fresh stack create the bucket, the Lambda resource policy, and the
+          # NotificationConfiguration are all brand new and can take a few minutes to actually
+          # start delivering events -- much longer than the lag on a stack that's just updating.
+          # Poll the live config instead of guessing, so we don't burn upload attempts on a
+          # notification that isn't wired up yet.
+          FRESH_CREATE="${{ steps.pre_deploy_state.outputs.fresh_create }}"
+          if [ "$FRESH_CREATE" = "true" ]; then
+            MAX_CHECKS=24
+          else
+            MAX_CHECKS=6
+          fi
+          for check in $(seq 1 "$MAX_CHECKS"); do
+            CONFIG=$(aws s3api get-bucket-notification-configuration --bucket bootcamp-input --query "LambdaFunctionConfigurations" --output text 2>/dev/null || echo "")
+            if [ -n "$CONFIG" ] && [ "$CONFIG" != "None" ]; then
+              echo "Bucket notification is live (check $check/$MAX_CHECKS)"
+              exit 0
+            fi
+            echo "Bucket notification not live yet (check $check/$MAX_CHECKS), waiting 10s..."
+            sleep 10
+          done
+          echo "::warning::Bucket notification still not visible after waiting -- proceeding anyway, but the trigger step will likely need its retries."
+
       - name: Trigger pipeline (upload sample CSV, retrying until the Glue workflow actually starts)
         run: |
           # CloudFormation re-applies the bucket's NotificationConfiguration on every deploy, and S3
           # can take longer than a fixed sleep to activate it. Instead of guessing a delay, upload and
           # poll for the workflow run to actually start, re-uploading if it hasn't after a short wait.
-          for attempt in 1 2 3 4 5; do
+          # A fresh stack create gets a bigger budget since everything in the chain is brand new.
+          FRESH_CREATE="${{ steps.pre_deploy_state.outputs.fresh_create }}"
+          if [ "$FRESH_CREATE" = "true" ]; then
+            ATTEMPTS=10
+          else
+            ATTEMPTS=5
+          fi
+          for attempt in $(seq 1 "$ATTEMPTS"); do
             aws s3 cp ipl_players_extra.csv "s3://bootcamp-input/input/ipl_players_extra.csv"
-            sleep 20
+            sleep 45
             RUN_ID=$(aws glue get-workflow --name "${{ vars.GLUE_WORKFLOW_NAME || 'glue-pipeline' }}" --query "Workflow.LastRun.WorkflowRunId" --output text 2>/dev/null || echo "None")
             if [ "$RUN_ID" != "None" ] && [ -n "$RUN_ID" ]; then
               echo "Glue workflow run started: $RUN_ID (attempt $attempt)"
@@ -109,5 +150,5 @@ jobs:
             fi
             echo "No workflow run detected yet after attempt $attempt, retrying upload..."
           done
-          echo "::error::Glue workflow never started after 5 upload attempts -- check the bucket's NotificationConfiguration and the Lambda's resource policy."
+          echo "::error::Glue workflow never started after $ATTEMPTS upload attempts -- check the bucket's NotificationConfiguration and the Lambda's resource policy."
           exit 1
