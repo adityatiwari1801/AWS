@@ -169,7 +169,7 @@ This step has no manual-console equivalent — it exists solely to enable the CI
    * **What it shows**: The registered OIDC provider (`token.actions.githubusercontent.com`) and the stack outputs — `DeployRoleArn` and `AssetsBucketNameOut`.
    * **How it works**: GitHub Actions later assumes `DeployRoleArn` via `sts:AssumeRoleWithWebIdentity`, scoped to this repo (`repo:<org>/<repo>:*`), to run every subsequent deploy/destroy.
 
-3. Add the outputs as GitHub repo **Variables**/**Secrets** (`AWS_REGION`, `ASSETS_BUCKET`, `CFN_STACK_NAME`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for the IAM-user path used inside `deploy.yml`).
+3. Add the outputs as GitHub repo **Variables** (`AWS_REGION`, `ASSETS_BUCKET`, `CFN_STACK_NAME`, `AWS_DEPLOY_ROLE_ARN` — the `DeployRoleArn` output above). No long-lived AWS keys are stored in the repo: `deploy.yml`/`destroy.yml` use `aws-actions/configure-aws-credentials@v4` with `role-to-assume` to obtain short-lived credentials via `sts:AssumeRoleWithWebIdentity`, gated by the workflow's `id-token: write` permission.
 
 ---
 
@@ -283,7 +283,7 @@ The Python ETL script (`glue_job.py`) processes raw data using standard Pandas t
 This stage has no manual equivalent — it is what replaces steps 1–6 above with a single, repeatable, auditable pipeline run.
 
 1. **Trigger.** `deploy.yml` runs on a push to `main`/`ci/cd-CF` touching `infra/**`, `lambda_function.py`, `glue_job.py`, or the workflow file itself — or manually via `workflow_dispatch`.
-2. **Authenticate.** `aws-actions/configure-aws-credentials@v4` configures AWS credentials for the run (IAM user secrets in this repo's current setup).
+2. **Authenticate.** `aws-actions/configure-aws-credentials@v4` assumes `GitHubActions-BootcampPipeline-Deploy` via OIDC (`role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}`) — no static AWS keys are stored in the repo.
 3. **Package & upload.** Lambda is zipped and, together with `glue_job.py`, uploaded to the assets bucket created in bootstrap.
 4. **Import mode (one-time, optional).** If `workflow_dispatch` is run with `import_mode: true`, a CloudFormation **IMPORT** changeset (`infra/import-template.yaml` + `infra/import-resources.json`) adopts pre-existing console-created resources into the stack instead of recreating them.
 5. **Create/update the stack.** `aws cloudformation deploy` applies `infra/template.yaml` idempotently — first run creates everything, subsequent runs update only what changed.
@@ -353,7 +353,7 @@ This stage has no manual equivalent — it is what replaces steps 1–6 above wi
 ### Option B — CI/CD (GitHub Actions + CloudFormation)
 1. **Set up billing guardrail**: Deploy the AWS Budgets/SNS alarm stack via CLI (Step 0), same as the manual path — do this once per account.
 2. **Bootstrap (one-time)**: Deploy `infra/bootstrap.yaml` via CLI to create the GitHub OIDC provider, deploy role, and assets bucket.
-3. **Configure repo secrets/variables**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ASSETS_BUCKET`, `CFN_STACK_NAME`, `INPUT_BUCKET`, `OUTPUT_BUCKET`.
+3. **Configure repo variables**: `AWS_REGION`, `ASSETS_BUCKET`, `CFN_STACK_NAME`, `INPUT_BUCKET`, `OUTPUT_BUCKET`, `AWS_DEPLOY_ROLE_ARN` (the `DeployRoleArn` bootstrap output). No secrets are needed — authentication is via OIDC.
 4. **Run `Deploy`**: Push to `main`/`ci/cd-CF` (with changes under `infra/**`, `lambda_function.py`, or `glue_job.py`) or trigger manually — this packages Lambda, deploys/updates `infra/template.yaml`, seeds the `input/` prefix, and auto-uploads a sample CSV to prove the pipeline end-to-end.
 5. **Verify Output**: Check the workflow's `GITHUB_STEP_SUMMARY` for stack outputs, then inspect `s3://bootcamp-output/ipl_players_extra/` and the Glue workflow run history.
 6. **Run `Destroy`** (when needed): Trigger manually, typing the exact stack name to confirm — this empties both buckets and deletes the `bootcamp-pipeline` stack.

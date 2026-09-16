@@ -54,7 +54,7 @@ Resources:
                 Action:
                   - glue:StartWorkflowRun
                   - glue:GetWorkflowRun
-                Resource: "*"
+                Resource: !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:workflow/${GlueWorkflowName}
 
   BootcampGlueRole:
     Type: AWS::IAM::Role

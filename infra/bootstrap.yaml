@@ -17,8 +17,9 @@ Parameters:
     Type: String
 
 Conditions:
-  # Set to "false" via a stack update if an OIDC provider for GitHub already exists in this account
-  CreateOidcProvider: !Equals [true, true]
+  # An OIDC provider for token.actions.githubusercontent.com already exists in this account
+  # (confirmed via `aws iam list-open-id-connect-providers`), so skip creating a second one.
+  CreateOidcProvider: !Equals [true, false]
 
 Resources:
   GitHubOidcProvider:

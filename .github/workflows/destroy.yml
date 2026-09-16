@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   destroy:
@@ -21,11 +22,11 @@ jobs:
             exit 1
           fi
 
-      - name: Configure AWS credentials (IAM user)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: gha-destroy-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Empty S3 buckets (CloudFormation cannot delete non-empty buckets)
