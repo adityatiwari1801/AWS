@@ -53,7 +53,13 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+                # GitHub sends the plain "repo:OWNER/REPO:*" sub claim normally, but switches to the
+                # ID-qualified "repo:OWNER@ownerId/REPO@repoId:*" form if the org or repo was ever
+                # renamed/transferred (to stop an old claim being replayed against the new name).
+                # This repo/org has such history, so match both forms.
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+                  - !Sub repo:${GitHubOrg}@313818176/${GitHubRepo}@1358041430:*
       Policies:
         - PolicyName: DeployBootcampPipeline
           PolicyDocument:
